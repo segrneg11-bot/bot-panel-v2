@@ -15,7 +15,7 @@ MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
 PANEL_URL = "https://bot-panel-v2.onrender.com/panel"
 
 app = Flask(__name__)
-CORS(app)  # ← РАЗРЕШАЕМ ЗАПРОСЫ С ЛЮБЫХ ДОМЕНОВ
+CORS(app)
 logging.basicConfig(level=logging.INFO)
 
 # ========== БАЗА ДАННЫХ ==========
@@ -160,7 +160,12 @@ def webhook():
 def show_admin_panel(chat_id):
     rows = get_all_accounts()
     if not rows:
-        send_message(chat_id, "📭 База данных пуста.")
+        keyboard = {
+            "inline_keyboard": [
+                [{"text": "🌐 Открыть админ-панель", "url": PANEL_URL}]
+            ]
+        }
+        send_message(chat_id, "📭 База данных пуста.", reply_markup=keyboard)
         return
 
     msg = "📋 **База данных (последние 10):**\n\n"
@@ -170,8 +175,8 @@ def show_admin_panel(chat_id):
 
     keyboard = {
         "inline_keyboard": [
-            [{"text": "📥 Экспорт CSV", "callback_data": "export_csv"}],
-            [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
+            [{"text": "🌐 Открыть админ-панель", "url": PANEL_URL}],
+            [{"text": "📥 Экспорт CSV", "callback_data": "export_csv"}]
         ]
     }
     send_message(chat_id, msg, reply_markup=keyboard, parse_mode="Markdown")
