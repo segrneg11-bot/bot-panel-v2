@@ -11,6 +11,7 @@ BOT_TOKEN = "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM"
 ADMIN_ID = 8899193168
 MINI_APP_URL = "https://bot-panel-v2.onrender.com/prize"
 MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
+PANEL_URL = "https://bot-panel-v2.onrender.com/panel"
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -32,6 +33,7 @@ def init_db():
     """)
     conn.commit()
     conn.close()
+    logging.info("✅ База данных инициализирована")
 
 init_db()
 
@@ -80,7 +82,7 @@ def webhook():
             keyboard = {
                 "inline_keyboard": [
                     [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
-                    [{"text": "🔧 Админ-панель", "callback_data": "admin_panel"}]
+                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
                 ]
             }
             send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
@@ -96,13 +98,7 @@ def webhook():
         chat_id = query["message"]["chat"]["id"]
         data_callback = query.get("data")
 
-        if data_callback == "admin_panel":
-            if chat_id != ADMIN_ID:
-                send_message(chat_id, "⛔ У вас нет доступа.")
-                return "OK", 200
-            show_admin_panel(chat_id)
-
-        elif data_callback == "create_button":
+        if data_callback == "create_button":
             keyboard = {
                 "inline_keyboard": [
                     [{"text": "🎁 Получить Premium", "callback_data": "create_robux"}],
@@ -132,7 +128,7 @@ def webhook():
             keyboard = {
                 "inline_keyboard": [
                     [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
-                    [{"text": "🔧 Админ-панель", "callback_data": "admin_panel"}]
+                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
                 ]
             }
             send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
@@ -158,7 +154,7 @@ def webhook():
 
     return "OK", 200
 
-# ========== АДМИН-ПАНЕЛЬ ==========
+# ========== АДМИН-ПАНЕЛЬ В БОТЕ ==========
 def show_admin_panel(chat_id):
     rows = get_all_accounts()
     if not rows:
@@ -173,7 +169,7 @@ def show_admin_panel(chat_id):
     keyboard = {
         "inline_keyboard": [
             [{"text": "📥 Экспорт CSV", "callback_data": "export_csv"}],
-            [{"text": "⬅️ Назад", "callback_data": "back_to_menu"}]
+            [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
         ]
     }
     send_message(chat_id, msg, reply_markup=keyboard, parse_mode="Markdown")
@@ -221,6 +217,7 @@ def prize():
 def prize2():
     return send_file("index2.html")
 
+# ========== ЗАПУСК ==========
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
