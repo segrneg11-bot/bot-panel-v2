@@ -11,7 +11,7 @@ BOT_TOKEN = "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM"
 ADMIN_ID = 8899193168
 MINI_APP_URL = "https://bot-panel-v2.onrender.com/prize"
 MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
-PANEL_URL = "https://bot-panel-v2.onrender.com/panel"
+PANEL_URL = "https://bot-panel-v2.onrender.com/panel"  # ← НОВАЯ ССЫЛКА
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
