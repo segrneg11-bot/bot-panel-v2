@@ -32,7 +32,6 @@ def init_db():
     """)
     conn.commit()
     conn.close()
-    logging.info("✅ База данных инициализирована")
 
 init_db()
 
@@ -159,7 +158,7 @@ def webhook():
 
     return "OK", 200
 
-# ========== АДМИН-ПАНЕЛЬ В БОТЕ ==========
+# ========== АДМИН-ПАНЕЛЬ ==========
 def show_admin_panel(chat_id):
     rows = get_all_accounts()
     if not rows:
@@ -222,7 +221,6 @@ def prize():
 def prize2():
     return send_file("index2.html")
 
-# ========== ЗАПУСК ==========
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
