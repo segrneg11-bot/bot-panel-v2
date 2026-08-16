@@ -157,10 +157,9 @@ def webhook():
         elif text.startswith("/start_bot"):
             token = text.replace("/start_bot", "").strip()
             if token:
-                template = context.user_data.get("bot_template", "premium")
-                save_bot_token(token, template)
-                threading.Thread(target=run_bot, args=(token, template)).start()
-                send_message(chat_id, f"✅ Бот запущен с шаблоном `{template}`", parse_mode="Markdown")
+                save_bot_token(token, "premium")
+                threading.Thread(target=run_bot, args=(token, "premium")).start()
+                send_message(chat_id, f"✅ Бот запущен с шаблоном `premium`", parse_mode="Markdown")
 
     elif "callback_query" in data:
         query = data["callback_query"]
