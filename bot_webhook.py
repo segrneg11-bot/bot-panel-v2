@@ -15,6 +15,12 @@ MINI_APP_URL = "https://bot-panel-v2.onrender.com/prize"
 MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
 PANEL_URL = "https://bot-panel-v2.onrender.com/panel"
 
+# Список разрешённых ботов
+ALLOWED_BOTS = [
+    "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM",
+    "8638305124:AAG6a1JWNDUEHywMpoeZdtf6gaDIfI9Npqk"
+]
+
 app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
@@ -138,15 +144,30 @@ def webhook():
         chat_id = msg["chat"]["id"]
         text = msg.get("text", "")
 
+        # Определяем, какой бот вызвал команду
+        bot_token = request.headers.get("X-Telegram-Bot-Api-Request-Token", "")
+        if bot_token not in ALLOWED_BOTS:
+            bot_token = BOT_TOKEN
+
         if text == "/start":
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
-                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}],
-                    [{"text": "⚙️ Конфиг", "callback_data": "config"}]
-                ]
-            }
-            send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
+            # Если команда от второго бота
+            if bot_token == "8638305124:AAG6a1JWNDUEHywMpoeZdtf6gaDIfI9Npqk":
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "🎁 Получить Premium", "web_app": {"url": MINI_APP_URL}}]
+                    ]
+                }
+                send_message(chat_id, "🎁 Нажмите кнопку, чтобы получить Premium!", reply_markup=keyboard)
+            else:
+                # Главное меню для основного бота
+                keyboard = {
+                    "inline_keyboard": [
+                        [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
+                        [{"text": "🌐 Админ-панель", "url": PANEL_URL}],
+                        [{"text": "⚙️ Конфиг", "callback_data": "config"}]
+                    ]
+                }
+                send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
 
         elif text == "/admin":
             if chat_id != ADMIN_ID:
