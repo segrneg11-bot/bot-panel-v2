@@ -52,12 +52,19 @@ def init_db():
             created_at INTEGER
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_state (
+            user_id INTEGER PRIMARY KEY,
+            state TEXT
+        )
+    """)
     conn.commit()
     conn.close()
     logging.info("✅ База данных инициализирована")
 
 init_db()
 
+# ========== РАБОТА С БАЗОЙ ==========
 def get_all_accounts():
     conn = sqlite3.connect("bot_panel.db")
     cursor = conn.cursor()
@@ -101,6 +108,34 @@ def get_requests():
     rows = cursor.fetchall()
     conn.close()
     return rows
+
+def update_username(user_id, username):
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET username = ? WHERE user_id = ?",
+        (username, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+def get_user_state(user_id):
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT state FROM user_state WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+def set_user_state(user_id, state):
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR REPLACE INTO user_state (user_id, state) VALUES (?, ?)",
+        (user_id, state)
+    )
+    conn.commit()
+    conn.close()
 
 # ========== ОТПРАВКА СООБЩЕНИЙ ==========
 def send_message(chat_id, text, reply_markup=None, parse_mode=None, token=BOT_TOKEN):
@@ -258,6 +293,17 @@ def webhook_client():
                 token=CLIENT_TOKEN
             )
 
+        elif text.startswith("/setusername"):
+            new_username = text.replace("/setusername", "").strip()
+            if new_username:
+                update_username(chat_id, new_username)
+                send_message(
+                    chat_id,
+                    f"✅ Ваш юзернейм обновлён: `{new_username}`",
+                    parse_mode="Markdown",
+                    token=CLIENT_TOKEN
+                )
+
     elif "callback_query" in data:
         query = data["callback_query"]
         chat_id = query["message"]["chat"]["id"]
@@ -272,23 +318,16 @@ def webhook_client():
             )
 
         elif data_callback == "request_premium":
-            username = data.get("username", "")
-            save_request(chat_id, username)
-
-            send_message(
-                ADMIN_ID,
-                f"📩 **Новая заявка на Premium!**\n\n"
-                f"🆔 ID: `{chat_id}`\n"
-                f"📛 Юзернейм: @{username if username else 'не указан'}\n"
-                f"🕒 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
-                parse_mode="Markdown"
-            )
-
             send_message(
                 chat_id,
-                "✅ Ваша заявка на Premium отправлена! Ожидайте.",
+                "📝 **Введите ваш юзернейм**\n\n"
+                "Напишите его в формате:\n"
+                "`/setusername @ваш_ник`\n\n"
+                "Пример: `/setusername @ZAP0U`",
+                parse_mode="Markdown",
                 token=CLIENT_TOKEN
             )
+            set_user_state(chat_id, "waiting_username")
 
     return "OK", 200
 
