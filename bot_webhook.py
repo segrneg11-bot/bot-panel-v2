@@ -10,7 +10,7 @@ import threading
 
 # ========== КОНФИГ ==========
 BOT_TOKEN = "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM"  # панель
-CLIENT_TOKEN = "8638305124:AAG6a1JWNDUEHywMpoeZdtf6gaDIfI9Npqk"  # клиентский бот
+CLIENT_TOKEN = "8664267920:AAFMMY3abej6XAjyvNWcXhnFe7HFcWtuMTk"  # клиентский бот
 ADMIN_ID = 8899193168
 MINI_APP_URL = "https://bot-panel-v2.onrender.com/prize"
 MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
@@ -102,16 +102,6 @@ def get_requests():
     rows = cursor.fetchall()
     conn.close()
     return rows
-
-def update_username(user_id, username):
-    conn = sqlite3.connect("bot_panel.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE users SET username = ? WHERE user_id = ?",
-        (username, user_id)
-    )
-    conn.commit()
-    conn.close()
 
 # ========== ОТПРАВКА СООБЩЕНИЙ ==========
 def send_message(chat_id, text, reply_markup=None, parse_mode=None, token=BOT_TOKEN):
