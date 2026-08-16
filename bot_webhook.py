@@ -43,6 +43,15 @@ def init_db():
             created_at INTEGER
         )
     """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            status TEXT,
+            created_at INTEGER
+        )
+    """)
     conn.commit()
     conn.close()
     logging.info("✅ База данных инициализирована")
@@ -65,22 +74,6 @@ def get_accounts_count():
     conn.close()
     return count
 
-def get_users_count():
-    conn = sqlite3.connect("bot_panel.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM users")
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count
-
-def get_all_users():
-    conn = sqlite3.connect("bot_panel.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT user_id, username, first_name, created_at FROM users ORDER BY created_at DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
 def save_user(user_id, username, first_name):
     conn = sqlite3.connect("bot_panel.db")
     cursor = conn.cursor()
@@ -90,6 +83,24 @@ def save_user(user_id, username, first_name):
     )
     conn.commit()
     conn.close()
+
+def save_request(user_id, username):
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO requests (user_id, username, status, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, username, "pending", int(datetime.now().timestamp()))
+    )
+    conn.commit()
+    conn.close()
+
+def get_requests():
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, username, status, created_at FROM requests ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
 
 # ========== ОТПРАВКА СООБЩЕНИЙ ==========
 def send_message(chat_id, text, reply_markup=None, parse_mode=None, token=BOT_TOKEN):
@@ -107,7 +118,6 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None, token=BOT_TO
         logging.error(f"❌ Ошибка отправки: {e}")
         return False
 
-# ========== ОТПРАВКА КНОПКИ ЧЕРЕЗ КЛИЕНТСКОГО БОТА ==========
 def send_button_via_client(chat_id, label, url):
     keyboard = {
         "inline_keyboard": [
@@ -138,7 +148,8 @@ def webhook():
             keyboard = {
                 "inline_keyboard": [
                     [{"text": "📤 Отправить кнопку", "callback_data": "send_button"}],
-                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
+                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}],
+                    [{"text": "👥 Юзеры", "callback_data": "users_list"}]
                 ]
             }
             send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
@@ -149,36 +160,18 @@ def webhook():
                 return "OK", 200
             show_admin_panel(chat_id)
 
-        elif text == "/users":
-            if chat_id != ADMIN_ID:
-                send_message(chat_id, "⛔ У вас нет доступа.")
-                return "OK", 200
-            show_users_list(chat_id)
-
         elif text.startswith("/send"):
             parts = text.split()
             if len(parts) < 2:
-                send_message(chat_id, "❌ Формат: `/send ID premium` или `/send ID osint`", parse_mode="Markdown")
+                send_message(chat_id, "❌ Формат: `/send ID premium`", parse_mode="Markdown")
                 return "OK", 200
             target = parts[1].strip()
-            button_type = parts[2].strip().lower() if len(parts) > 2 else "premium"
-
-            if button_type == "premium":
-                url = MINI_APP_URL
-                label = "🎁 Получить Premium"
-            elif button_type == "osint":
-                url = MINI_APP_URL2
-                label = "🔍 Проверить данные"
-            else:
-                send_message(chat_id, "❌ Неверный тип. Используй `premium` или `osint`", parse_mode="Markdown")
-                return "OK", 200
-
-            # Отправляем кнопку через клиентского бота
-            success = send_button_via_client(target, label, url)
+            label = "🎁 Получить Premium"
+            success = send_button_via_client(target, label, MINI_APP_URL)
             if success:
-                send_message(chat_id, f"✅ Кнопка `{label}` отправлена пользователю с ID `{target}` через @fikeikddbot", parse_mode="Markdown")
+                send_message(chat_id, f"✅ Кнопка отправлена пользователю с ID `{target}` через @fikeikddbot", parse_mode="Markdown")
             else:
-                send_message(chat_id, f"❌ Не удалось отправить кнопку пользователю с ID `{target}`. Возможно, он не начал диалог с @fikeikddbot.", parse_mode="Markdown")
+                send_message(chat_id, f"❌ Не удалось отправить кнопку пользователю с ID `{target}`.", parse_mode="Markdown")
 
     elif "callback_query" in data:
         query = data["callback_query"]
@@ -186,26 +179,17 @@ def webhook():
         data_callback = query.get("data")
 
         if data_callback == "send_button":
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🎁 Premium", "callback_data": "send_premium"}],
-                    [{"text": "🔍 Проверить данные", "callback_data": "send_osint"}],
-                    [{"text": "⬅️ Назад", "callback_data": "back_to_menu"}]
-                ]
-            }
-            send_message(chat_id, "🔧 **Выберите тип кнопки для отправки:**", reply_markup=keyboard)
+            send_message(chat_id, "✏️ Введите ID пользователя:\n`/send 123456789`", parse_mode="Markdown")
 
-        elif data_callback == "send_premium":
-            send_message(chat_id, "✏️ Введите ID пользователя и тип:\n`/send 123456789 premium`", parse_mode="Markdown")
-
-        elif data_callback == "send_osint":
-            send_message(chat_id, "✏️ Введите ID пользователя и тип:\n`/send 123456789 osint`", parse_mode="Markdown")
+        elif data_callback == "users_list":
+            show_users_list(chat_id)
 
         elif data_callback == "back_to_menu":
             keyboard = {
                 "inline_keyboard": [
                     [{"text": "📤 Отправить кнопку", "callback_data": "send_button"}],
-                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
+                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}],
+                    [{"text": "👥 Юзеры", "callback_data": "users_list"}]
                 ]
             }
             send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
@@ -231,7 +215,7 @@ def webhook():
 
     return "OK", 200
 
-# ========== КЛИЕНТСКИЙ БОТ (профиль + уведомление админу) ==========
+# ========== КЛИЕНТСКИЙ БОТ ==========
 @app.route("/client", methods=["POST"])
 def webhook_client():
     data = request.get_json()
@@ -246,34 +230,29 @@ def webhook_client():
         first_name = msg.get("first_name", "")
 
         if text == "/start":
-            # Сохраняем пользователя
             save_user(chat_id, username, first_name)
 
-            # Уведомление админу
             send_message(
                 ADMIN_ID,
                 f"🆕 **Новый пользователь!**\n\n"
                 f"🆔 ID: `{chat_id}`\n"
                 f"👤 Имя: {first_name}\n"
-                f"📛 Юзернейм: @{username if username else 'нет'}\n"
-                f"🕒 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+                f"📛 Юзернейм: @{username if username else 'нет'}",
                 parse_mode="Markdown"
             )
 
-            # Профиль пользователя
             keyboard = {
                 "inline_keyboard": [
                     [{"text": "📋 Мой ID", "callback_data": "copy_id"}],
-                    [{"text": "📊 Статистика", "callback_data": "client_stats"}]
+                    [{"text": "📩 Заявка на Premium", "callback_data": "request_premium"}]
                 ]
             }
             send_message(
                 chat_id,
                 f"👤 **Ваш профиль**\n\n"
-                f"🆔 Ваш ID: `{chat_id}`\n"
-                f"📌 Используйте этот ID для получения кнопок в основном боте.\n\n"
-                f"📤 Чтобы получить кнопку, напишите в @cdcdcdfgdbot:\n"
-                f"`/send {chat_id} premium`",
+                f"🆔 ID: `{chat_id}`\n"
+                f"📌 Юзернейм: @{username if username else 'не указан'}\n\n"
+                f"Нажмите «Заявка на Premium», чтобы отправить запрос.",
                 reply_markup=keyboard,
                 parse_mode="Markdown",
                 token=CLIENT_TOKEN
@@ -287,36 +266,37 @@ def webhook_client():
         if data_callback == "copy_id":
             send_message(
                 chat_id,
-                f"🆔 Ваш ID: `{chat_id}`\n\n"
-                f"Скопируйте его и отправьте в @cdcdcdfgdbot:\n"
-                f"`/send {chat_id} premium`",
+                f"🆔 Ваш ID: `{chat_id}`",
                 parse_mode="Markdown",
                 token=CLIENT_TOKEN
             )
 
-        elif data_callback == "client_stats":
+        elif data_callback == "request_premium":
+            username = data.get("username", "")
+            save_request(chat_id, username)
+
+            send_message(
+                ADMIN_ID,
+                f"📩 **Новая заявка на Premium!**\n\n"
+                f"🆔 ID: `{chat_id}`\n"
+                f"📛 Юзернейм: @{username if username else 'не указан'}\n"
+                f"🕒 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+                parse_mode="Markdown"
+            )
+
             send_message(
                 chat_id,
-                f"📊 **Ваша статистика**\n\n"
-                f"🆔 ID: `{chat_id}`\n"
-                f"📅 Активен: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
-                f"📌 Бот: @fikeikddbot",
-                parse_mode="Markdown",
+                "✅ Ваша заявка на Premium отправлена! Ожидайте.",
                 token=CLIENT_TOKEN
             )
 
     return "OK", 200
 
-# ========== АДМИН-ПАНЕЛЬ В БОТЕ ==========
+# ========== АДМИН-ПАНЕЛЬ ==========
 def show_admin_panel(chat_id):
     rows = get_all_accounts()
     if not rows:
-        keyboard = {
-            "inline_keyboard": [
-                [{"text": "🌐 Открыть админ-панель", "url": PANEL_URL}]
-            ]
-        }
-        send_message(chat_id, "📭 База данных пуста.", reply_markup=keyboard)
+        send_message(chat_id, "📭 База данных пуста.")
         return
 
     msg = "📋 **База данных (последние 10):**\n\n"
@@ -333,16 +313,15 @@ def show_admin_panel(chat_id):
     send_message(chat_id, msg, reply_markup=keyboard, parse_mode="Markdown")
 
 def show_users_list(chat_id):
-    users = get_all_users()
-    if not users:
-        send_message(chat_id, "📭 Нет зарегистрированных пользователей.")
+    requests = get_requests()
+    if not requests:
+        send_message(chat_id, "📭 Нет заявок.")
         return
 
-    msg = "👥 **Список пользователей:**\n\n"
-    for i, (user_id, username, first_name, created_at) in enumerate(users[:20], 1):
+    msg = "👥 **Заявки на Premium:**\n\n"
+    for i, (user_id, username, status, created_at) in enumerate(requests[:20], 1):
         date = datetime.fromtimestamp(created_at).strftime("%d.%m %H:%M")
-        msg += f"{i}. 👤 {first_name} (@{username if username else 'нет'})\n"
-        msg += f"   🆔 `{user_id}` | 🕒 {date}\n\n"
+        msg += f"{i}. 🆔 `{user_id}` | @{username if username else 'нет'} | 🕒 {date}\n"
 
     send_message(chat_id, msg, parse_mode="Markdown")
 
@@ -361,7 +340,6 @@ def api_accounts():
         })
     return json.dumps(result)
 
-# ========== API ДЛЯ МИНИ-ПРИЛОЖЕНИЯ ==========
 @app.route("/api/contact", methods=["POST"])
 def api_contact():
     data = request.get_json()
@@ -399,12 +377,10 @@ def api_verify():
     logging.info(f"✅ Проверен код: {phone} → {code}")
     return json.dumps({"status": "success", "message": "Аккаунт подтверждён"})
 
-# ========== ВЕБ-АДМИНКА ==========
 @app.route("/panel")
 def admin_panel():
     return send_file("admin_panel.html")
 
-# ========== НАСТРОЙКА ВЕБХУКА ==========
 @app.route("/setwebhook", methods=["GET", "POST"])
 def set_webhook():
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL", "")
@@ -414,7 +390,6 @@ def set_webhook():
     r = requests.post(url, json={"url": webhook_url})
     return f"Webhook set: {r.json()}"
 
-# ========== РАЗДАЧА HTML ==========
 @app.route("/")
 def index():
     return "Бот работает! Используй /setwebhook для настройки."
@@ -427,7 +402,6 @@ def prize():
 def prize2():
     return send_file("index2.html")
 
-# ========== ЗАПУСК ==========
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
