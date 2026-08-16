@@ -15,18 +15,6 @@ MINI_APP_URL = "https://bot-panel-v2.onrender.com/prize"
 MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
 PANEL_URL = "https://bot-panel-v2.onrender.com/panel"
 
-# ========== СПИСОК БОТОВ ==========
-BOTS = {
-    "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM": {
-        "name": "Панель",
-        "type": "panel"
-    },
-    "8638305124:AAG6a1JWNDUEHywMpoeZdtf6gaDIfI9Npqk": {
-        "name": "Клиент",
-        "type": "client"
-    }
-}
-
 app = Flask(__name__)
 CORS(app)
 logging.basicConfig(level=logging.INFO)
@@ -138,7 +126,7 @@ def run_bot(token, template):
     app_bot.run_polling()
     logging.info(f"✅ Бот запущен: {token} -> {template}")
 
-# ========== ОБРАБОТКА ВЕБХУКА ==========
+# ========== ОСНОВНОЙ ВЕБХУК (панель) ==========
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -150,29 +138,15 @@ def webhook():
         chat_id = msg["chat"]["id"]
         text = msg.get("text", "")
 
-        # Определяем, какой бот вызвал команду
-        bot_token = request.headers.get("X-Telegram-Bot-Api-Request-Token", "")
-        bot_type = BOTS.get(bot_token, {}).get("type", "unknown")
-
         if text == "/start":
-            if bot_type == "panel":
-                # Меню для основного бота
-                keyboard = {
-                    "inline_keyboard": [
-                        [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
-                        [{"text": "🌐 Админ-панель", "url": PANEL_URL}],
-                        [{"text": "⚙️ Конфиг", "callback_data": "config"}]
-                    ]
-                }
-                send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
-            else:
-                # Кнопка для клиентского бота
-                keyboard = {
-                    "inline_keyboard": [
-                        [{"text": "🎁 Получить Premium", "web_app": {"url": MINI_APP_URL}}]
-                    ]
-                }
-                send_message(chat_id, "🎁 Нажмите кнопку, чтобы получить Premium!", reply_markup=keyboard)
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
+                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}],
+                    [{"text": "⚙️ Конфиг", "callback_data": "config"}]
+                ]
+            }
+            send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
 
         elif text == "/admin":
             if chat_id != ADMIN_ID:
@@ -283,6 +257,28 @@ def webhook():
                 logging.info("📤 CSV отправлен")
             except Exception as e:
                 logging.error(f"❌ Ошибка отправки CSV: {e}")
+
+    return "OK", 200
+
+# ========== КЛИЕНТСКИЙ ВЕБХУК (для @fikeikddbot) ==========
+@app.route("/client", methods=["POST"])
+def webhook_client():
+    data = request.get_json()
+    if not data:
+        return "OK", 200
+
+    if "message" in data:
+        msg = data["message"]
+        chat_id = msg["chat"]["id"]
+        text = msg.get("text", "")
+
+        if text == "/start":
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "🎁 Получить Premium", "web_app": {"url": MINI_APP_URL}}]
+                ]
+            }
+            send_message(chat_id, "🎁 Нажмите кнопку, чтобы получить Premium!", reply_markup=keyboard)
 
     return "OK", 200
 
