@@ -107,6 +107,21 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None, token=BOT_TO
         logging.error(f"❌ Ошибка отправки: {e}")
         return False
 
+# ========== ОТПРАВКА КНОПКИ ЧЕРЕЗ КЛИЕНТСКОГО БОТА ==========
+def send_button_via_client(chat_id, label, url):
+    keyboard = {
+        "inline_keyboard": [
+            [{"text": label, "web_app": {"url": url}}]
+        ]
+    }
+    return send_message(
+        chat_id,
+        f"🎁 Вам отправили кнопку **{label}**!",
+        reply_markup=keyboard,
+        parse_mode="Markdown",
+        token=CLIENT_TOKEN
+    )
+
 # ========== ОБРАБОТКА ВЕБХУКА (панель) ==========
 @app.route("/", methods=["POST"])
 def webhook():
@@ -158,16 +173,12 @@ def webhook():
                 send_message(chat_id, "❌ Неверный тип. Используй `premium` или `osint`", parse_mode="Markdown")
                 return "OK", 200
 
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": label, "web_app": {"url": url}}]
-                ]
-            }
-            success = send_message(target, f"🎁 Вам отправили кнопку **{label}**!", reply_markup=keyboard, parse_mode="Markdown")
+            # Отправляем кнопку через клиентского бота
+            success = send_button_via_client(target, label, url)
             if success:
-                send_message(chat_id, f"✅ Кнопка `{label}` отправлена пользователю с ID `{target}`", parse_mode="Markdown")
+                send_message(chat_id, f"✅ Кнопка `{label}` отправлена пользователю с ID `{target}` через @fikeikddbot", parse_mode="Markdown")
             else:
-                send_message(chat_id, f"❌ Не удалось отправить кнопку пользователю с ID `{target}`. Возможно, он не начал диалог с ботом.", parse_mode="Markdown")
+                send_message(chat_id, f"❌ Не удалось отправить кнопку пользователю с ID `{target}`. Возможно, он не начал диалог с @fikeikddbot.", parse_mode="Markdown")
 
     elif "callback_query" in data:
         query = data["callback_query"]
