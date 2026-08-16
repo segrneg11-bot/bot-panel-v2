@@ -188,11 +188,9 @@ def webhook():
             send_message(chat_id, "🔧 **Выберите шаблон для нового бота:**", reply_markup=keyboard)
 
         elif data_callback == "add_bot_premium":
-            context.user_data["bot_template"] = "premium"
             send_message(chat_id, "Введите токен бота из @BotFather:\n`/start_bot ТОКЕН`", parse_mode="Markdown")
 
         elif data_callback == "add_bot_osint":
-            context.user_data["bot_template"] = "osint"
             send_message(chat_id, "Введите токен бота из @BotFather:\n`/start_bot ТОКЕН`", parse_mode="Markdown")
 
         elif data_callback == "list_bots":
