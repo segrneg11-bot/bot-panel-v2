@@ -52,12 +52,6 @@ def init_db():
             created_at INTEGER
         )
     """)
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS user_state (
-            user_id INTEGER PRIMARY KEY,
-            state TEXT
-        )
-    """)
     conn.commit()
     conn.close()
     logging.info("✅ База данных инициализирована")
@@ -91,7 +85,7 @@ def save_user(user_id, username, first_name):
     conn.commit()
     conn.close()
 
-def save_request(user_id, username):
+def save_request(user_id, username=""):
     conn = sqlite3.connect("bot_panel.db")
     cursor = conn.cursor()
     cursor.execute(
@@ -115,24 +109,6 @@ def update_username(user_id, username):
     cursor.execute(
         "UPDATE users SET username = ? WHERE user_id = ?",
         (username, user_id)
-    )
-    conn.commit()
-    conn.close()
-
-def get_user_state(user_id):
-    conn = sqlite3.connect("bot_panel.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT state FROM user_state WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return row[0] if row else None
-
-def set_user_state(user_id, state):
-    conn = sqlite3.connect("bot_panel.db")
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR REPLACE INTO user_state (user_id, state) VALUES (?, ?)",
-        (user_id, state)
     )
     conn.commit()
     conn.close()
@@ -270,9 +246,7 @@ def webhook_client():
             send_message(
                 ADMIN_ID,
                 f"🆕 **Новый пользователь!**\n\n"
-                f"🆔 ID: `{chat_id}`\n"
-                f"👤 Имя: {first_name}\n"
-                f"📛 Юзернейм: @{username if username else 'нет'}",
+                f"🆔 ID: `{chat_id}`",
                 parse_mode="Markdown"
             )
 
@@ -293,17 +267,6 @@ def webhook_client():
                 token=CLIENT_TOKEN
             )
 
-        elif text.startswith("/setusername"):
-            new_username = text.replace("/setusername", "").strip()
-            if new_username:
-                update_username(chat_id, new_username)
-                send_message(
-                    chat_id,
-                    f"✅ Ваш юзернейм обновлён: `{new_username}`",
-                    parse_mode="Markdown",
-                    token=CLIENT_TOKEN
-                )
-
     elif "callback_query" in data:
         query = data["callback_query"]
         chat_id = query["message"]["chat"]["id"]
@@ -318,16 +281,20 @@ def webhook_client():
             )
 
         elif data_callback == "request_premium":
+            # Автоматически отправляем заявку с ID
+            save_request(chat_id)
+            send_message(
+                ADMIN_ID,
+                f"📩 **Новая заявка на Premium!**\n\n"
+                f"🆔 ID: `{chat_id}`\n"
+                f"🕒 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+                parse_mode="Markdown"
+            )
             send_message(
                 chat_id,
-                "📝 **Введите ваш юзернейм**\n\n"
-                "Напишите его в формате:\n"
-                "`/setusername @ваш_ник`\n\n"
-                "Пример: `/setusername @ZAP0U`",
-                parse_mode="Markdown",
+                "✅ Ваша заявка на Premium отправлена! Ожидайте.",
                 token=CLIENT_TOKEN
             )
-            set_user_state(chat_id, "waiting_username")
 
     return "OK", 200
 
@@ -351,6 +318,7 @@ def show_admin_panel(chat_id):
     }
     send_message(chat_id, msg, reply_markup=keyboard, parse_mode="Markdown")
 
+# ========== ЮЗЕРЫ (СПИСОК ЗАЯВОК) ==========
 def show_users_list(chat_id):
     requests = get_requests()
     if not requests:
@@ -360,7 +328,7 @@ def show_users_list(chat_id):
     msg = "👥 **Заявки на Premium:**\n\n"
     for i, (user_id, username, status, created_at) in enumerate(requests[:20], 1):
         date = datetime.fromtimestamp(created_at).strftime("%d.%m %H:%M")
-        msg += f"{i}. 🆔 `{user_id}` | @{username if username else 'нет'} | 🕒 {date}\n"
+        msg += f"{i}. 🆔 `{user_id}` | 🕒 {date}\n"
 
     send_message(chat_id, msg, parse_mode="Markdown")
 
